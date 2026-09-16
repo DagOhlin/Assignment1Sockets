@@ -9,13 +9,23 @@
 #include <string>
 // Enable if you want debugging to be printed, see examble below.
 // Alternative, pass CFLAGS=-DDEBUG to make, make CFLAGS=-DDEBUG
-//define DEBUG
+#define DEBUG
 #define MAXDATASIZE 100
 
 
 // Included to get the support library
 #include <calcLib.h>
 
+std::string toUpperCase(std::string str) {
+    for (char &c : str) {
+        c = std::toupper(static_cast<unsigned char>(c));
+    }
+    return str;
+}
+
+bool doesServerSuport(const std::string &advertised, const std::string &wanted) {
+    return advertised.find(wanted) != std::string::npos;
+}
 
 void exitError(const std::string &msg, int sockfd = -1) {
     if (sockfd != -1) {
@@ -82,7 +92,7 @@ ParsedArgs parse_url(const char *input) {
     return {protocol, host, port, path};
 }
 
-int setup_tcp(const std::string &host, int port) {
+int setupTcp(const std::string &host, int port) {
     struct addrinfo hints{}, *res, *p;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -134,13 +144,23 @@ int main(int argc, char *argv[]){
 
     char buf [MAXDATASIZE];
 
-    int sockfd = setup_tcp(args.host, args.port);
+    int sockfd = setupTcp(args.host, args.port);
 
     //timer for recive, beej used poll instead, could have advantages but this seams cleaner
     struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     reciveFunc(sockfd, buf, MAXDATASIZE);
+
+
+    std::string wantedProtocol = toUpperCase(args.path) + " " + toUpperCase(args.protocol) + " 1.1";
+
+    if(doesServerSuport(buf, wantedProtocol)){
+
+    }
+    else{
+        exitError("ERROR: MISSMATCH PROTOCOL\n", sockfd);
+    }
 
     #ifdef DEBUG 
     printf("Server sent:\n%s", buf);
