@@ -106,17 +106,12 @@ int main(int argc, char *argv[]){
 
     ParsedArgs args = parse_url(argv[1]);
   
-#ifdef DEBUG 
-  printf("Protocol: %s Host %s, port = %d and path = %s.\n",
-       args.protocol.c_str(), args.host.c_str(), args.port, args.path.c_str());
-#endif
+    printf("Host %s, and port %d.\n", args.host, args.port);
 
     char buf [MAXDATASIZE];
 
     int sockfd = setup_tcp(args.host, args.port);
 
-    printf("Connection successful!\n");
-  
     int numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0);
     if (numbytes == -1) {
         perror("recv");
@@ -125,11 +120,7 @@ int main(int argc, char *argv[]){
     }
 
     buf[numbytes] = '\0'; 
-#ifdef DEBUG 
-    printf("Server sent:\n%s", buf);
-    memset(&buf, 0, sizeof buf);
-
-#endif
+    printf("Host %s, and port %d.\n", args.host.c_str(), args.port);    
     const char *msg = "TEXT TCP 1.1 OK\n";
     ssize_t bytes_sent = send(sockfd, msg, strlen(msg), 0);
 
