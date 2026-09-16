@@ -16,6 +16,23 @@
 // Included to get the support library
 #include <calcLib.h>
 
+bool parseAndCalculate(const std::string &assignment, int &result) {
+    char op[16];
+    int val1, val2;
+    if (sscanf(assignment.c_str(), "%15s %d %d", op, &val1, &val2) != 3) {
+        return false;
+    }
+    std::string operation(op);
+    if (operation == "add") result = val1 + val2;
+    else if (operation == "sub") result = val1 - val2;
+    else if (operation == "mul") result = val1 * val2;
+    else if (operation == "div") {
+        if (val2 == 0) return false;
+        result = val1 / val2;
+    } else return false;
+    return true;
+}
+
 std::string toUpperCase(std::string str) {
     for (char &c : str) {
         c = std::toupper(static_cast<unsigned char>(c));
@@ -172,8 +189,14 @@ int main(int argc, char *argv[]){
     if (bytes_sent == -1) {
         perror("send");
     }
-
+    memset(&buf, 0, sizeof(buf));
     reciveFunc(sockfd, buf, MAXDATASIZE);
+    int res;
+    parseAndCalculate(buf, res);
+    std::string response = std::to_string(res) + "\n";
+
+    bytes_sent = send(sockfd, response.c_str(), response.length(), 0);
+
 
     #ifdef DEBUG 
     printf("Server sent:\n%s", buf);
