@@ -42,7 +42,7 @@ int reciveFunc(int sockfd, char *buf, size_t maxLenght) {
     }
     if (numbytes < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            exitError("MESSAGE LOST (timer ran out)", sockfd);
+            exitError("ERROR: MESSAGE LOST (TIMEOUT)", sockfd);
         }
         exitError("Receive failed", sockfd);
     }
