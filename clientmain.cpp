@@ -9,12 +9,36 @@
 #include <string>
 // Enable if you want debugging to be printed, see examble below.
 // Alternative, pass CFLAGS=-DDEBUG to make, make CFLAGS=-DDEBUG
-//#define DEBUG
+#define DEBUG
 #define MAXDATASIZE 100
 
 
 // Included to get the support library
 #include <calcLib.h>
+
+
+void exitError(const std::string &msg, int sockfd = -1) {
+    if (sockfd != -1) {
+        close(sockfd);
+    }
+    fprintf(stderr, "ERROR: %s\n", msg.c_str());
+    exit(EXIT_FAILURE);
+}
+
+int reciveFunc(int sockfd, char *buf, size_t maxLenght) {
+    int numbytes = recv(sockfd, buf, maxLenght - 1, 0);
+    if (numbytes == 0) {
+        exitError("Server disconnected:(", sockfd);
+    }
+    if (numbytes < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            exitError("MESSAGE LOST (timer ran out)", sockfd);
+        }
+        exitError("Receive failed", sockfd);
+    }
+    buf[numbytes] = '\0';
+    return numbytes;
+}
 
 struct ParsedArgs {
     std::string protocol;
@@ -116,14 +140,8 @@ int main(int argc, char *argv[]){
     struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    int numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0);
-    if (numbytes == -1) {
-        perror("recv");
-        close(sockfd);
-        return 1;
-    }
+    reciveFunc(sockfd, buf, MAXDATASIZE);
 
-    buf[numbytes] = '\0'; 
     #ifdef DEBUG 
     printf("Server sent:\n%s", buf);
     #endif
@@ -135,14 +153,8 @@ int main(int argc, char *argv[]){
         perror("send");
     }
 
-    numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0);
-    if (numbytes == -1) {
-        perror("recv");
-        close(sockfd);
-        return 1;
-    }
+    reciveFunc(sockfd, buf, MAXDATASIZE);
 
-    buf[numbytes] = '\0';
     #ifdef DEBUG 
     printf("Server sent:\n%s", buf);
     #endif
