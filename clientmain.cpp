@@ -16,6 +16,48 @@
 // Included to get the support library
 #include <calcLib.h>
 
+struct ParsedArgs {
+    std::string protocol;
+    std::string host;
+    int port;
+    std::string path;
+};
+
+ParsedArgs parse_url(const char *input) {
+    if (!input || strstr(input, "///") != NULL) {
+        fprintf(stderr, "ERROR: Invalid URL format\n");
+        exit(EXIT_FAILURE);
+    }
+
+    char *proto_end = strstr((char *)input, "://");
+    if (!proto_end) {
+        fprintf(stderr, "ERROR: Missing '://'\n");
+        exit(EXIT_FAILURE);
+    }
+
+    char *host_start = proto_end + 3;
+    char *port_start = strchr(host_start, ':');
+    char *path_start = strchr(host_start, '/');
+
+    if (!port_start || !path_start || port_start >= path_start) {
+        fprintf(stderr, "ERROR: Invalid host/port/path structure\n");
+        exit(EXIT_FAILURE);
+    }
+
+    std::string protocol(input, proto_end - input);
+    std::string host(host_start, port_start - host_start);
+    std::string port_str(port_start + 1, path_start - (port_start + 1));
+    std::string path(path_start + 1);
+
+    int port = atoi(port_str.c_str());
+    if (port < 1 || port > 65535) {
+        fprintf(stderr, "ERROR: Port out of range\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return {protocol, host, port, path};
+}
+
 int main(int argc, char *argv[]){
   
   
@@ -26,120 +68,11 @@ int main(int argc, char *argv[]){
   }
 
 
-    
-  /*
-    Read first input, assumes <ip>:<port> syntax, convert into one string (Desthost) and one integer (port). 
-     Atm, works only on dotted notation, i.e. IPv4 and DNS. IPv6 does not work if its using ':'. 
-  */
-    char protocolstring[6], hoststring[2000],portstring[6], pathstring[7];
-
-    char *input = argv[1];
-    
-    /* Some error checks on string before processing */
-    // Check for more than two consequtive slashes '///'.
-
-    if (strstr(input, "///") != NULL ){
-      printf("Invalid format: %s.\n", input);
-      return 1;
-    }
-    
-
-    // Find the position of "://"
-    char *proto_end = strstr(input, "://");
-    if (!proto_end) {
-        printf("Invalid format: missing '://'\n");
-        return 1;
-    }
-
-     // Extract protocol
-    size_t proto_len = proto_end - input;
-    if (proto_len >= sizeof(protocolstring)) {
-        fprintf(stderr, "Error: Protocol string too long\n");
-        return 1;
-    }
-    
-    // Copy protocol
-    strncpy(protocolstring, input, proto_end - input);
-    protocolstring[proto_end - input] = '\0';
-
-    // Move past "://"
-    char *host_start = proto_end + 3;
-
-    // Find the position of ":"
-    char *port_start = strchr(host_start, ':');
-    if (!port_start || port_start == host_start) {
-	printf("Error: Port is missing or ':' is misplaced\n");
-        return 1;
-    }
-
-    // Extract host
-    size_t host_len = port_start - host_start;
-    if (host_len >= sizeof(hoststring)) {
-        printf("Error: Host string too long\n");
-        return 1;
-    }
-    
-    // Copy host
-    strncpy(hoststring, host_start, port_start - host_start);
-    hoststring[port_start - host_start] = '\0';
-
-        // Find '/' which starts the path
-    char *path_start = strchr(host_start, '/');
-    if (!path_start || *(path_start + 1) == '\0') {
-        fprintf(stderr, "Error: Path is missing or invalid\n");
-        return 1;
-    }
-
-    // Extract path
-    if (strlen(path_start + 1) >= sizeof(pathstring)) {
-        fprintf(stderr, "Error: Path string too long\n");
-        return 1;
-    }
-    strcpy(pathstring, path_start + 1);
-
-    // Extract port
-
-
-    size_t port_len = path_start - port_start - 1;
-    if (port_len >= sizeof(portstring)) {
-        fprintf(stderr, "Error: Port string too long\n");
-        return 1;
-    }
-    strncpy(portstring, port_start + 1, port_len);
-    portstring[port_len] = '\0';
-
-    // Validate port is numeric
-    for (size_t i = 0; i < strlen(portstring); ++i) {
-        if (portstring[i] < '0' || portstring[i] > '9') {
-            fprintf(stderr, "Error: Port must be numeric\n");
-            return 1;
-        }
-    }
-
-
-    
-    char *protocol, *Desthost, *Destport, *Destpath;
-    protocol=protocolstring;
-    Desthost=hoststring;
-    Destport=portstring;
-    Destpath=pathstring;
-      
-  // *Desthost now points to a sting holding whatever came before the delimiter, ':'.
-  // *Dstport points to whatever string came after the delimiter. 
-
-
-    
-  /* Do magic */
-  int port=atoi(Destport);
-  if (port < 1 or port >65535) {
-    printf("Error: Port is out of server scope.\n");
-    if ( port > 65535 ) {
-      printf("Error: Port is not a valid UDP or TCP port.\n");
-    }
-    return 1;
-  }
+    ParsedArgs args = parse_url(argv[1]);
+  
 #ifdef DEBUG 
-  printf("Protocol: %s Host %s, port = %d and path = %s.\n",protocol, Desthost,port, Destpath);
+  printf("Protocol: %s Host %s, port = %d and path = %s.\n",
+       args.protocol.c_str(), args.host.c_str(), args.port, args.path.c_str());
 #endif
 
     struct addrinfo hints, *res;
@@ -151,8 +84,8 @@ int main(int argc, char *argv[]){
     hints.ai_family = AF_UNSPEC;      // Allow IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM;  // TCP stream socket
 
-    std::string port_str = std::to_string(port);
-    if (getaddrinfo(Desthost, port_str.c_str(), &hints, &res) != 0) {
+    std::string port_str = std::to_string(args.port);
+    if (getaddrinfo(args.host.c_str(), port_str.c_str(), &hints, &res) != 0) {
         perror("getaddrinfo");
         return 1;
     }
@@ -183,5 +116,29 @@ int main(int argc, char *argv[]){
     }
 
     buf[numbytes] = '\0'; 
+#ifdef DEBUG 
     printf("Server sent:\n%s", buf);
+    memset(&buf, 0, sizeof buf);
+
+#endif
+    const char *msg = "TEXT TCP 1.1 OK\n";
+    ssize_t bytes_sent = send(sockfd, msg, strlen(msg), 0);
+
+    if (bytes_sent == -1) {
+        perror("send");
+    }
+
+    numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0);
+    if (numbytes == -1) {
+        perror("recv");
+        close(sockfd);
+        return 1;
+    }
+
+    buf[numbytes] = '\0';
+#ifdef DEBUG 
+    printf("Server sent:\n%s", buf);
+#endif
+    memset(&buf, 0, sizeof buf);
+
 }

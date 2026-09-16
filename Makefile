@@ -1,4 +1,4 @@
-CC_FLAGS = -Wall -I.
+CC_FLAGS = -std=c++17 -Wall -I.
 LD_FLAGS = -Wall -L./ 
 BIN_DIR  = bin
 
