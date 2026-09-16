@@ -9,7 +9,7 @@
 #include <string>
 // Enable if you want debugging to be printed, see examble below.
 // Alternative, pass CFLAGS=-DDEBUG to make, make CFLAGS=-DDEBUG
-//#define DEBUG
+#define DEBUG
 #define MAXDATASIZE 100
 
 
@@ -191,16 +191,42 @@ int main(int argc, char *argv[]){
     }
     memset(&buf, 0, sizeof(buf));
     reciveFunc(sockfd, buf, MAXDATASIZE);
-    int res;
-    parseAndCalculate(buf, res);
-    std::string response = std::to_string(res) + "\n";
 
-    bytes_sent = send(sockfd, response.c_str(), response.length(), 0);
+    std::string assignment(buf);
 
-
-    #ifdef DEBUG 
+    #ifdef DEBUG
     printf("Server sent:\n%s", buf);
     #endif
-    memset(&buf, 0, sizeof buf);
+
+    int res;
+    if (!parseAndCalculate(assignment, res)) {
+        exitError("Could not parse assignment", sockfd);
+    }
+
+    
+    printf("ASSIGNMENT: %s\n", assignment.c_str());
+
+    #ifdef DEBUG
+    printf("gott %d\n", res);
+    #endif
+
+    std::string response = std::to_string(res) + "\n";
+    bytes_sent = send(sockfd, response.c_str(), response.length(), 0);
+    if (bytes_sent == -1) {
+        perror("send");
+    }
+
+    memset(&buf, 0, sizeof(buf));
+    
+    reciveFunc(sockfd, buf, MAXDATASIZE);
+
+    std::string serverReply(buf);
+    if (!serverReply.empty() && serverReply.back() == '\n') {
+        serverReply.pop_back();
+    }
+    printf("%s (myresult=%d)\n", serverReply.c_str(), res);
+
+    close(sockfd);
+    return EXIT_SUCCESS;
 
 }
