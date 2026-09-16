@@ -2,10 +2,15 @@
 #include <string.h>
 #include <stdlib.h>
 /* You will to add includes here */
-
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <string>
 // Enable if you want debugging to be printed, see examble below.
 // Alternative, pass CFLAGS=-DDEBUG to make, make CFLAGS=-DDEBUG
 #define DEBUG
+#define MAXDATASIZE 100
 
 
 // Included to get the support library
@@ -19,7 +24,7 @@ int main(int argc, char *argv[]){
     fprintf(stderr, "Usage: %s protocol://server:port/path.\n", argv[0]);
     exit(EXIT_FAILURE);
   }
-  
+
 
     
   /*
@@ -137,6 +142,46 @@ int main(int argc, char *argv[]){
   printf("Protocol: %s Host %s, port = %d and path = %s.\n",protocol, Desthost,port, Destpath);
 #endif
 
+    struct addrinfo hints, *res;
+    int sockfd;
+    char buf[MAXDATASIZE];
 
+    // 1. Configure hints for TCP
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;      // Allow IPv4 or IPv6
+    hints.ai_socktype = SOCK_STREAM;  // TCP stream socket
+
+    std::string port_str = std::to_string(port);
+    if (getaddrinfo(Desthost, port_str.c_str(), &hints, &res) != 0) {
+        perror("getaddrinfo");
+        return 1;
+    }
+
+    // 2. Create the socket
+    sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sockfd == -1) {
+        perror("socket");
+        return 1;
+    }
+
+    // 3. Connect to the server
+    if (connect(sockfd, res->ai_addr, res->ai_addrlen) == -1) {
+        perror("connect");
+        close(sockfd);
+        return 1;
+    }
+
+    freeaddrinfo(res);
+
+    printf("Connection successful!\n");
   
+    int numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0);
+    if (numbytes == -1) {
+        perror("recv");
+        close(sockfd);
+        return 1;
+    }
+
+    buf[numbytes] = '\0'; 
+    printf("Server sent:\n%s", buf);
 }
