@@ -58,6 +58,42 @@ ParsedArgs parse_url(const char *input) {
     return {protocol, host, port, path};
 }
 
+int setup_tcp(const std::string &host, int port) {
+    struct addrinfo hints{}, *res, *p;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    std::string port_str = std::to_string(port);
+    if (getaddrinfo(host.c_str(), port_str.c_str(), &hints, &res) != 0) {
+        fprintf(stderr, "ERROR: RESOLVE ISSUE\n");
+        exit(EXIT_FAILURE);
+    }
+
+    int sockfd = -1;
+    for (p = res; p != nullptr; p = p->ai_next) {
+        sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (sockfd == -1) {
+            continue;
+        }
+
+        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0) {
+            break; // Connection established
+        }
+
+        close(sockfd);
+        sockfd = -1;
+    }
+
+    freeaddrinfo(res);
+
+    if (sockfd == -1) {
+        fprintf(stderr, "ERROR: CANT CONNECT TO %s\n", host.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    return sockfd;
+}
+
 int main(int argc, char *argv[]){
   
   
@@ -75,36 +111,9 @@ int main(int argc, char *argv[]){
        args.protocol.c_str(), args.host.c_str(), args.port, args.path.c_str());
 #endif
 
-    struct addrinfo hints, *res;
-    int sockfd;
-    char buf[MAXDATASIZE];
+    char buf [MAXDATASIZE];
 
-    // 1. Configure hints for TCP
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;      // Allow IPv4 or IPv6
-    hints.ai_socktype = SOCK_STREAM;  // TCP stream socket
-
-    std::string port_str = std::to_string(args.port);
-    if (getaddrinfo(args.host.c_str(), port_str.c_str(), &hints, &res) != 0) {
-        perror("getaddrinfo");
-        return 1;
-    }
-
-    // 2. Create the socket
-    sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sockfd == -1) {
-        perror("socket");
-        return 1;
-    }
-
-    // 3. Connect to the server
-    if (connect(sockfd, res->ai_addr, res->ai_addrlen) == -1) {
-        perror("connect");
-        close(sockfd);
-        return 1;
-    }
-
-    freeaddrinfo(res);
+    int sockfd = setup_tcp(args.host, args.port);
 
     printf("Connection successful!\n");
   
