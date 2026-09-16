@@ -106,7 +106,7 @@ int main(int argc, char *argv[]){
 
     ParsedArgs args = parse_url(argv[1]);
   
-    printf("Host %s, and port %d.\n", args.host, args.port);
+    printf("Host %s, and port %d.\n", args.host.c_str(), args.port);
 
     char buf [MAXDATASIZE];
 
@@ -120,7 +120,10 @@ int main(int argc, char *argv[]){
     }
 
     buf[numbytes] = '\0'; 
-    printf("Host %s, and port %d.\n", args.host.c_str(), args.port);    
+#ifdef DEBUG 
+    printf("Server sent:\n%s", buf);
+#endif
+     
     const char *msg = "TEXT TCP 1.1 OK\n";
     ssize_t bytes_sent = send(sockfd, msg, strlen(msg), 0);
 
