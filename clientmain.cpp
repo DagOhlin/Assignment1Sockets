@@ -112,6 +112,10 @@ int main(int argc, char *argv[]){
 
     int sockfd = setup_tcp(args.host, args.port);
 
+    //timer for recive, beej used poll instead, could have advantages but this seams cleaner
+    struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
     int numbytes = recv(sockfd, buf, MAXDATASIZE - 1, 0);
     if (numbytes == -1) {
         perror("recv");
