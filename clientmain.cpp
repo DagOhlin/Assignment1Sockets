@@ -120,9 +120,9 @@ int main(int argc, char *argv[]){
     }
 
     buf[numbytes] = '\0'; 
-#ifdef DEBUG 
+    #ifdef DEBUG 
     printf("Server sent:\n%s", buf);
-#endif
+    #endif
      
     const char *msg = "TEXT TCP 1.1 OK\n";
     ssize_t bytes_sent = send(sockfd, msg, strlen(msg), 0);
@@ -139,9 +139,9 @@ int main(int argc, char *argv[]){
     }
 
     buf[numbytes] = '\0';
-#ifdef DEBUG 
+    #ifdef DEBUG 
     printf("Server sent:\n%s", buf);
-#endif
+    #endif
     memset(&buf, 0, sizeof buf);
 
 }
