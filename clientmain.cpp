@@ -97,7 +97,7 @@ struct ParsedArgs {
     std::string protocol;
     std::string host;
     int port;
-    std::string path;
+    std::string api;
 };
 
 ParsedArgs parse_url(const char *input) {
@@ -106,33 +106,33 @@ ParsedArgs parse_url(const char *input) {
         exit(EXIT_FAILURE);
     }
 
-    char *proto_end = strstr((char *)input, "://");
-    if (!proto_end) {
+    char *protoEnd = strstr((char *)input, "://");
+    if (!protoEnd) {
         fprintf(stderr, "ERROR: Missing '://'\n");
         exit(EXIT_FAILURE);
     }
 
-    char *host_start = proto_end + 3;
-    char *port_start = strchr(host_start, ':');
-    char *path_start = strchr(host_start, '/');
+    char *hostStart = protoEnd + 3;
+    char *portStart = strchr(hostStart, ':');
+    char *apiStart = strchr(hostStart, '/');
 
-    if (!port_start || !path_start || port_start >= path_start) {
-        fprintf(stderr, "ERROR: Invalid host/port/path structure\n");
+    if (!portStart || !apiStart || portStart >= apiStart) {
+        fprintf(stderr, "ERROR: Invalid host/port/api structure\n");
         exit(EXIT_FAILURE);
     }
 
-    std::string protocol(input, proto_end - input);
-    std::string host(host_start, port_start - host_start);
-    std::string port_str(port_start + 1, path_start - (port_start + 1));
-    std::string path(path_start + 1);
+    std::string protocol(input, protoEnd - input);
+    std::string host(hostStart, portStart - hostStart);
+    std::string portStr(portStart + 1, apiStart - (portStart + 1));
+    std::string api(apiStart + 1);
 
-    int port = atoi(port_str.c_str());
+    int port = atoi(portStr.c_str());
     if (port < 1 || port > 65535) {
         fprintf(stderr, "ERROR: Port out of range\n");
         exit(EXIT_FAILURE);
     }
 
-    return {protocol, host, port, path};
+    return {protocol, host, port, api};
 }
 
 int setupTcp(const std::string &host, int port) {
@@ -171,12 +171,49 @@ int setupTcp(const std::string &host, int port) {
     return sockfd;
 }
 
+void handleTcpText(int sockfd) {
+    char buf[MAXDATASIZE];
+
+    memset(&buf, 0, sizeof(buf));
+    reciveFunc(sockfd, buf, MAXDATASIZE);
+
+    std::string assignment(buf);
+
+    int res;
+    if (!parseAndCalculate(assignment, res)) {
+        exitError("Could not parse assignment", sockfd);
+    }
+
+    if (!assignment.empty() && assignment.back() == '\n') {
+        assignment.pop_back();
+    }
+    printf("ASSIGNMENT: %s\n", assignment.c_str());
+
+    #ifdef DEBUG
+    printf("gott %d\n", res);
+    #endif
+
+    std::string response = std::to_string(res) + "\n";
+    sendFunc(sockfd, response.c_str(), response.length());
+
+    memset(&buf, 0, sizeof(buf));
+    reciveFunc(sockfd, buf, MAXDATASIZE);
+
+    std::string serverReply(buf);
+    if (!serverReply.empty() && serverReply.back() == '\n') {
+        serverReply.pop_back();
+    }
+    printf("%s (myresult=%d)\n", serverReply.c_str(), res);
+
+    close(sockfd);
+}
+
 int main(int argc, char *argv[]){
   
   
   
   if (argc < 2) {
-    fprintf(stderr, "Usage: %s protocol://server:port/path.\n", argv[0]);
+    fprintf(stderr, "Usage: %s protocol://server:port/api.\n", argv[0]);
     exit(EXIT_FAILURE);
   }
 
@@ -191,68 +228,38 @@ int main(int argc, char *argv[]){
     int sockfd;
     if (protoUpper == "TCP") {
         sockfd = setupTcp(args.host, args.port);
+         //timer for recive, beej used poll instead, could have advantages but this seams cleaner
+            struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
+            setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+            reciveFunc(sockfd, buf, MAXDATASIZE);
+            
+            std::string wantedProtocol = toUpperCase(args.api) + " " + toUpperCase(args.protocol) + " 1.1";
+
+        if(!doesServerSuport(buf, wantedProtocol)){
+            exitError("ERROR: MISSMATCH PROTOCOL\n", sockfd);
+        }
+        std::string aceptMessage =  wantedProtocol + " OK\n";
+        //const char *msg = "TEXT TCP 1.1 OK\n";
+        sendFunc(sockfd, aceptMessage.c_str(), aceptMessage.length());
+        
+        std::string apiUpper = toUpperCase(args.api);
+        if (apiUpper == "TEXT")
+        {
+            handleTcpText(sockfd);
+        }else if(apiUpper == "BINARY"){
+
+        }else{
+            exitError("Unknown api");
+        }
+
+        
     } else if (protoUpper == "UDP") {
     } else if (protoUpper == "ANY") {
     } else {
         exitError("Unknown protocol");
     }
 
-
-
-    //timer for recive, beej used poll instead, could have advantages but this seams cleaner
-    struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    reciveFunc(sockfd, buf, MAXDATASIZE);
-    
-
-    std::string wantedProtocol = toUpperCase(args.path) + " " + toUpperCase(args.protocol) + " 1.1";
-
-    if(!doesServerSuport(buf, wantedProtocol)){
-        exitError("ERROR: MISSMATCH PROTOCOL\n", sockfd);
-    }
-
-    
-
-    
-    std::string aceptMessage =  wantedProtocol + " OK\n";
-    //const char *msg = "TEXT TCP 1.1 OK\n";
-    sendFunc(sockfd, aceptMessage.c_str(), aceptMessage.length());
-    
-    memset(&buf, 0, sizeof(buf));
-    reciveFunc(sockfd, buf, MAXDATASIZE);
-
-    std::string assignment(buf);
-
-    
-
-    int res;
-    if (!parseAndCalculate(assignment, res)) {
-        exitError("Could not parse assignment", sockfd);
-    }
-
-    
-    printf("ASSIGNMENT: %s", assignment.c_str());
-
-    #ifdef DEBUG
-    printf("gott %d\n", res);
-    #endif
-
-    std::string response = std::to_string(res) + "\n";
-    sendFunc(sockfd, response.c_str(), response.length());
-    
-
-
-    memset(&buf, 0, sizeof(buf));
-    reciveFunc(sockfd, buf, MAXDATASIZE);
-
-    std::string serverReply(buf);
-    if (!serverReply.empty() && serverReply.back() == '\n') {
-        serverReply.pop_back();
-    }
-    printf("%s (myresult=%d)\n", serverReply.c_str(), res);
-
-    close(sockfd);
     return EXIT_SUCCESS;
 
 }
