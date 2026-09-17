@@ -275,20 +275,22 @@ void handleBinaryAssignment(int sockfd) {
     int32_t val2 = ntohl(msg.inValue2);
 
    
-    printf("ASSIGNMENT: arith=%u val1=%d val2=%d\n", arith, val1, val2);
-    
-
+    const char *opName;
     int32_t result;
     switch (arith) {
-        case 1: result = val1 + val2; break;
-        case 2: result = val1 - val2; break;
-        case 3: result = val1 * val2; break;
+        case 1: opName = "add"; result = val1 + val2; break;
+        case 2: opName = "sub"; result = val1 - val2; break;
+        case 3: opName = "mul"; result = val1 * val2; break;
         case 4:
+            opName = "div";
             if (val2 == 0) exitError("Division by zero", sockfd);
-            result = val1 / val2; break;
+            result = val1 / val2;
+            break;
         default:
             exitError("Unknown arith code", sockfd);
     }
+
+    printf("ASSIGNMENT: %s %d %d\n", opName, val1, val2);
 
     #ifdef DEBUG
     printf("Calculated %d\n", result);
