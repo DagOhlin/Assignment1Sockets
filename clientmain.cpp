@@ -11,7 +11,7 @@
 #include "protocol.h"
 // Enable if you want debugging to be printed, see examble below.
 // Alternative, pass CFLAGS=-DDEBUG to make, make CFLAGS=-DDEBUG
-#define DEBUG
+//#define DEBUG
 #define MAXDATASIZE 100
 
 
@@ -175,57 +175,7 @@ int setupTcp(const std::string &host, int port) {
 
 
 
-void handleTcpBinary(int sockfd) {
-    calcProtocol msg;
-    int numbytes = recv(sockfd, &msg, sizeof(msg), 0);
-    if (numbytes != sizeof(msg)) {
-        exitError("ERROR WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
-    }
 
-    uint16_t type = ntohs(msg.type);
-    uint32_t arith = ntohl(msg.arith);
-    int32_t val1 = ntohl(msg.inValue1);
-    int32_t val2 = ntohl(msg.inValue2);
-
-    #ifdef DEBUG
-    printf("ASSIGNMENT: arith=%u val1=%d val2=%d\n", arith, val1, val2);
-    #endif
-
-    int32_t result;
-    switch (arith) {
-        case 1: result = val1 + val2; break;
-        case 2: result = val1 - val2; break;
-        case 3: result = val1 * val2; break;
-        case 4:
-            if (val2 == 0) exitError("Division by zero", sockfd);
-            result = val1 / val2; break; 
-        default:
-            exitError("Unknown arith code", sockfd);
-    }
-
-    #ifdef DEBUG
-    printf("Calculated the result to %d\n", result);
-    #endif
-
-    
-    msg.inResult = htonl(result);
-    sendFunc(sockfd, &msg, sizeof(msg));
-
-    calcMessage reply;
-    numbytes = recv(sockfd, &reply, sizeof(reply), 0);
-    if (numbytes != sizeof(reply)) {
-        exitError("ERROR WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
-    }
-
-    uint32_t replyMessage = ntohl(reply.message);
-    if (replyMessage == 1) {
-        printf("OK (myresult=%d)\n", result);
-    } else {
-        printf("ERROR (myresult=%d)\n", result);
-    }
-
-    close(sockfd);
-}
 
 void handleTextAssignment(int sockfd, const std::string &assignment) {
     std::string trimmedAssignment = assignment;
@@ -310,6 +260,76 @@ int setupUdp(const std::string &host, int port) {
     return sockfd;
 }
 
+void handleBinaryAssignment(int sockfd) {
+    calcProtocol msg;
+    int numbytes = recv(sockfd, &msg, sizeof(msg), 0);
+
+
+    if (numbytes != sizeof(msg)) {
+        exitError("ERROR WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
+    }
+
+    uint16_t type = ntohs(msg.type);
+    uint32_t arith = ntohl(msg.arith);
+    int32_t val1 = ntohl(msg.inValue1);
+    int32_t val2 = ntohl(msg.inValue2);
+
+    #ifdef DEBUG
+    printf("ASSIGNMENT: arith=%u val1=%d val2=%d\n", arith, val1, val2);
+    #endif
+
+    int32_t result;
+    switch (arith) {
+        case 1: result = val1 + val2; break;
+        case 2: result = val1 - val2; break;
+        case 3: result = val1 * val2; break;
+        case 4:
+            if (val2 == 0) exitError("Division by zero", sockfd);
+            result = val1 / val2; break;
+        default:
+            exitError("Unknown arith code", sockfd);
+    }
+
+    #ifdef DEBUG
+    printf("Calculated %d\n", result);
+    #endif
+
+    msg.type = htons(2);
+    msg.inResult = htonl(result);
+    sendFunc(sockfd, &msg, sizeof(msg));
+
+    calcMessage reply;
+    numbytes = recv(sockfd, &reply, sizeof(reply), 0);
+    if (numbytes != sizeof(reply)) {
+        exitError("ERROR WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
+    }
+
+    uint32_t replyMessage = ntohl(reply.message);
+    if (replyMessage == 1) {
+        printf("OK (myresult=%d)\n", result);
+    } else {
+        printf("ERROR (myresult=%d)\n", result);
+    }
+
+    close(sockfd);
+}
+
+void handleTcpBinary(int sockfd) {
+    handleBinaryAssignment(sockfd);
+}
+
+void handleUdpBinary(int sockfd) {
+    calcMessage hello{};
+    hello.type = htons(22);
+    hello.message = htonl(0);
+    hello.protocol = htons(17); // UDP
+    hello.major_version = htons(1);
+    hello.minor_version = htons(1);
+    sendFunc(sockfd, &hello, sizeof(hello));
+
+    handleBinaryAssignment(sockfd);
+}
+
 int main(int argc, char *argv[]){
   
   
@@ -356,7 +376,7 @@ int main(int argc, char *argv[]){
 
     } else if (protoUpper == "UDP") {
         sockfd = setupUdp(args.host, args.port);
-
+    
         struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
         setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
@@ -364,7 +384,7 @@ int main(int argc, char *argv[]){
         if (apiUpper == "TEXT") {
             handleUdpText(sockfd);
         } else if (apiUpper == "BINARY") {
-            // will add later
+            handleUdpBinary(sockfd);
         } else {
             exitError("Unknown api");
         }
