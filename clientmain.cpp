@@ -216,8 +216,8 @@ int main(int argc, char *argv[]){
 
     
     std::string aceptMessage =  wantedProtocol + " OK\n";
-    const char *msg = "TEXT TCP 1.1 OK\n";
-    sendFunc(sockfd, msg, strlen(msg));
+    //const char *msg = "TEXT TCP 1.1 OK\n";
+    sendFunc(sockfd, aceptMessage.c_str(), aceptMessage.length());
     
     memset(&buf, 0, sizeof(buf));
     reciveFunc(sockfd, buf, MAXDATASIZE);
