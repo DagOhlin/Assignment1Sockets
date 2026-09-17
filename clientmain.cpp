@@ -274,9 +274,9 @@ void handleBinaryAssignment(int sockfd) {
     int32_t val1 = ntohl(msg.inValue1);
     int32_t val2 = ntohl(msg.inValue2);
 
-    #ifdef DEBUG
+   
     printf("ASSIGNMENT: arith=%u val1=%d val2=%d\n", arith, val1, val2);
-    #endif
+    
 
     int32_t result;
     switch (arith) {
