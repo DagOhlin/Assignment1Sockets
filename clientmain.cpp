@@ -7,6 +7,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <string>
+
+#include "protocol.h"
 // Enable if you want debugging to be printed, see examble below.
 // Alternative, pass CFLAGS=-DDEBUG to make, make CFLAGS=-DDEBUG
 #define DEBUG
@@ -208,6 +210,58 @@ void handleTcpText(int sockfd) {
     close(sockfd);
 }
 
+void handleTcpBinary(int sockfd) {
+    calcProtocol msg;
+    int numbytes = recv(sockfd, &msg, sizeof(msg), 0);
+    if (numbytes != sizeof(msg)) {
+        exitError("ERROR WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
+    }
+
+    uint16_t type = ntohs(msg.type);
+    uint32_t arith = ntohl(msg.arith);
+    int32_t val1 = ntohl(msg.inValue1);
+    int32_t val2 = ntohl(msg.inValue2);
+
+    #ifdef DEBUG
+    printf("ASSIGNMENT: arith=%u val1=%d val2=%d\n", arith, val1, val2);
+    #endif
+
+    int32_t result;
+    switch (arith) {
+        case 1: result = val1 + val2; break;
+        case 2: result = val1 - val2; break;
+        case 3: result = val1 * val2; break;
+        case 4:
+            if (val2 == 0) exitError("Division by zero", sockfd);
+            result = val1 / val2; break; 
+        default:
+            exitError("Unknown arith code", sockfd);
+    }
+
+    #ifdef DEBUG
+    printf("Calculated the result to %d\n", result);
+    #endif
+
+    
+    msg.inResult = htonl(result);
+    sendFunc(sockfd, &msg, sizeof(msg));
+
+    calcMessage reply;
+    numbytes = recv(sockfd, &reply, sizeof(reply), 0);
+    if (numbytes != sizeof(reply)) {
+        exitError("ERROR WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
+    }
+
+    uint32_t replyMessage = ntohl(reply.message);
+    if (replyMessage == 1) {
+        printf("OK (myresult=%d)\n", result);
+    } else {
+        printf("ERROR (myresult=%d)\n", result);
+    }
+
+    close(sockfd);
+}
+
 int main(int argc, char *argv[]){
   
   
@@ -244,11 +298,10 @@ int main(int argc, char *argv[]){
         sendFunc(sockfd, aceptMessage.c_str(), aceptMessage.length());
         
         std::string apiUpper = toUpperCase(args.api);
-        if (apiUpper == "TEXT")
-        {
+        if (apiUpper == "TEXT"){
             handleTcpText(sockfd);
         }else if(apiUpper == "BINARY"){
-
+            handleTcpBinary(sockfd);
         }else{
             exitError("Unknown api");
         }
