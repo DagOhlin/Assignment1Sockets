@@ -52,6 +52,29 @@ void exitError(const std::string &msg, int sockfd = -1) {
     exit(EXIT_FAILURE);
 }
 
+int sendFunc(int sockfd, const void *buf, size_t len) {
+    const char *ptr = static_cast<const char *>(buf);
+    size_t totalSent = 0;
+
+    while (totalSent < len) {
+        ssize_t numbytes = send(sockfd, ptr + totalSent, len - totalSent, 0);
+
+        if (numbytes < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                exitError("ERROR: MESSAGE LOST (TIMEOUT)", sockfd);
+            }
+            exitError("Send failed", sockfd);
+        }
+        if (numbytes == 0) {
+            exitError("Server disconnected:(", sockfd);
+        }
+
+        totalSent += numbytes;
+    }
+
+    return static_cast<int>(totalSent);
+}
+
 int reciveFunc(int sockfd, char *buf, size_t maxLenght) {
     int numbytes = recv(sockfd, buf, maxLenght - 1, 0);
     if (numbytes == 0) {
@@ -64,6 +87,9 @@ int reciveFunc(int sockfd, char *buf, size_t maxLenght) {
         exitError("Receive failed", sockfd);
     }
     buf[numbytes] = '\0';
+    #ifdef DEBUG 
+    printf("Server sent:\n%s", buf);
+    #endif
     return numbytes;
 }
 
@@ -161,42 +187,44 @@ int main(int argc, char *argv[]){
 
     char buf [MAXDATASIZE];
 
-    int sockfd = setupTcp(args.host, args.port);
+    std::string protoUpper = toUpperCase(args.protocol);
+    int sockfd;
+    if (protoUpper == "TCP") {
+        sockfd = setupTcp(args.host, args.port);
+    } else if (protoUpper == "UDP") {
+    } else if (protoUpper == "ANY") {
+    } else {
+        exitError("Unknown protocol");
+    }
+
+
 
     //timer for recive, beej used poll instead, could have advantages but this seams cleaner
     struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     reciveFunc(sockfd, buf, MAXDATASIZE);
-
+    
 
     std::string wantedProtocol = toUpperCase(args.path) + " " + toUpperCase(args.protocol) + " 1.1";
 
-    if(doesServerSuport(buf, wantedProtocol)){
-
-    }
-    else{
+    if(!doesServerSuport(buf, wantedProtocol)){
         exitError("ERROR: MISSMATCH PROTOCOL\n", sockfd);
     }
 
-    #ifdef DEBUG 
-    printf("Server sent:\n%s", buf);
-    #endif
-     
-    const char *msg = "TEXT TCP 1.1 OK\n";
-    ssize_t bytes_sent = send(sockfd, msg, strlen(msg), 0);
+    
 
-    if (bytes_sent == -1) {
-        perror("send");
-    }
+    
+    std::string aceptMessage =  wantedProtocol + " OK\n";
+    const char *msg = "TEXT TCP 1.1 OK\n";
+    sendFunc(sockfd, msg, strlen(msg));
+    
     memset(&buf, 0, sizeof(buf));
     reciveFunc(sockfd, buf, MAXDATASIZE);
 
     std::string assignment(buf);
 
-    #ifdef DEBUG
-    printf("Server sent:\n%s", buf);
-    #endif
+    
 
     int res;
     if (!parseAndCalculate(assignment, res)) {
@@ -204,20 +232,18 @@ int main(int argc, char *argv[]){
     }
 
     
-    printf("ASSIGNMENT: %s\n", assignment.c_str());
+    printf("ASSIGNMENT: %s", assignment.c_str());
 
     #ifdef DEBUG
     printf("gott %d\n", res);
     #endif
 
     std::string response = std::to_string(res) + "\n";
-    bytes_sent = send(sockfd, response.c_str(), response.length(), 0);
-    if (bytes_sent == -1) {
-        perror("send");
-    }
+    sendFunc(sockfd, response.c_str(), response.length());
+    
+
 
     memset(&buf, 0, sizeof(buf));
-    
     reciveFunc(sockfd, buf, MAXDATASIZE);
 
     std::string serverReply(buf);
