@@ -95,6 +95,23 @@ int reciveFunc(int sockfd, char *buf, size_t maxLenght) {
     return numbytes;
 }
 
+int reciveStruct(int sockfd, void *buf, size_t expectedLen) {
+    ssize_t numbytes = recv(sockfd, buf, expectedLen, 0);
+    if (numbytes == 0) {
+        exitError("Server disconnected:(", sockfd);
+    }
+    if (numbytes < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            exitError("MESSAGE LOST (TIMEOUT)", sockfd);
+        }
+        exitError("Receive failed", sockfd);
+    }
+    if ((size_t)numbytes != expectedLen) {
+        exitError("WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
+    }
+    return numbytes;
+}
+
 struct ParsedArgs {
     std::string protocol;
     std::string host;
@@ -102,7 +119,7 @@ struct ParsedArgs {
     std::string api;
 };
 
-ParsedArgs parse_url(const char *input) {
+ParsedArgs parseUrl(const char *input) {
     if (!input || strstr(input, "///") != NULL) {
         fprintf(stderr, "ERROR: Invalid URL format\n");
         exit(EXIT_FAILURE);
@@ -137,13 +154,14 @@ ParsedArgs parse_url(const char *input) {
     return {protocol, host, port, api};
 }
 
-int setupTcp(const std::string &host, int port) {
+int setupTcp(const std::string &host, int port, bool exitOnFailure = true) {
     struct addrinfo hints{}, *res, *p;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    std::string port_str = std::to_string(port);
-    if (getaddrinfo(host.c_str(), port_str.c_str(), &hints, &res) != 0) {
+    std::string portStr = std::to_string(port);
+    if (getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) != 0) {
+        if (!exitOnFailure) return -1;
         fprintf(stderr, "ERROR: RESOLVE ISSUE\n");
         exit(EXIT_FAILURE);
     }
@@ -151,29 +169,52 @@ int setupTcp(const std::string &host, int port) {
     int sockfd = -1;
     for (p = res; p != nullptr; p = p->ai_next) {
         sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (sockfd == -1) {
-            continue;
-        }
-
-        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0) {
-            break; // Connection established
-        }
-
+        if (sockfd == -1) continue;
+        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0) break;
         close(sockfd);
         sockfd = -1;
     }
-
     freeaddrinfo(res);
 
     if (sockfd == -1) {
+        if (!exitOnFailure) return -1;
         fprintf(stderr, "ERROR: CANT CONNECT TO %s\n", host.c_str());
         exit(EXIT_FAILURE);
     }
-
     return sockfd;
 }
 
 
+int connectTcp(const std::string &host, int port, const std::string &apiUpper,
+               bool exitOnFailure = true) {
+    int sockfd = setupTcp(host, port, exitOnFailure);
+    if (sockfd == -1) return -1;
+
+    struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    char buf[MAXDATASIZE];
+    memset(buf, 0, sizeof(buf));
+    int n = recv(sockfd, buf, MAXDATASIZE - 1, 0);
+    if (n <= 0) {
+        close(sockfd);
+        if (!exitOnFailure) return -1;
+        exitError("MESSAGE LOST (TIMEOUT)");
+    }
+    buf[n] = '\0';
+
+    
+    std::string wantedProtocol = apiUpper + " TCP 1.1";
+    if (!doesServerSuport(buf, wantedProtocol)) {
+        close(sockfd);
+        if (!exitOnFailure) return -1;
+        exitError("MISSMATCH PROTOCOL");
+    }
+
+    std::string acceptMessage = wantedProtocol + " OK\n";
+    sendFunc(sockfd, acceptMessage.c_str(), acceptMessage.length());
+    return sockfd;
+}
 
 
 
@@ -227,13 +268,14 @@ void handleUdpText(int sockfd) {
     handleTextAssignment(sockfd, std::string(buf));
 }
 
-int setupUdp(const std::string &host, int port) {
+int setupUdp(const std::string &host, int port, bool exitOnFailure = true) {
     struct addrinfo hints{}, *res, *p;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_DGRAM;
 
     std::string portStr = std::to_string(port);
     if (getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res) != 0) {
+        if (!exitOnFailure) return -1;
         fprintf(stderr, "ERROR: RESOLVE ISSUE\n");
         exit(EXIT_FAILURE);
     }
@@ -253,6 +295,7 @@ int setupUdp(const std::string &host, int port) {
     freeaddrinfo(res);
 
     if (sockfd == -1) {
+        if (!exitOnFailure) return -1;
         fprintf(stderr, "ERROR: CANT CONNECT TO %s\n", host.c_str());
         exit(EXIT_FAILURE);
     }
@@ -262,12 +305,8 @@ int setupUdp(const std::string &host, int port) {
 
 void handleBinaryAssignment(int sockfd) {
     calcProtocol msg;
-    int numbytes = recv(sockfd, &msg, sizeof(msg), 0);
+    reciveStruct(sockfd, &msg, sizeof(msg));
 
-
-    if (numbytes != sizeof(msg)) {
-        exitError("ERROR WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
-    }
 
     uint16_t type = ntohs(msg.type);
     uint32_t arith = ntohl(msg.arith);
@@ -301,10 +340,7 @@ void handleBinaryAssignment(int sockfd) {
     sendFunc(sockfd, &msg, sizeof(msg));
 
     calcMessage reply;
-    numbytes = recv(sockfd, &reply, sizeof(reply), 0);
-    if (numbytes != sizeof(reply)) {
-        exitError("ERROR WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
-    }
+    reciveStruct(sockfd, &reply, sizeof(reply));
 
     uint32_t replyMessage = ntohl(reply.message);
     if (replyMessage == 1) {
@@ -341,58 +377,39 @@ int main(int argc, char *argv[]){
     exit(EXIT_FAILURE);
   }
 
-
-    ParsedArgs args = parse_url(argv[1]);
+  ParsedArgs args = parseUrl(argv[1]);
   
     printf("Host %s, and port %d.\n", args.host.c_str(), args.port);
 
-    char buf [MAXDATASIZE];
-
     std::string protoUpper = toUpperCase(args.protocol);
+    std::string apiUpper = toUpperCase(args.api);
+    if (apiUpper != "TEXT" && apiUpper != "BINARY") exitError("Unknown api");
+
     int sockfd;
+    struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
+
     if (protoUpper == "TCP") {
-        sockfd = setupTcp(args.host, args.port);
-         //timer for recive, beej used poll instead, could have advantages but this seams cleaner
-            struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
-            setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-            reciveFunc(sockfd, buf, MAXDATASIZE);
-            
-            std::string wantedProtocol = toUpperCase(args.api) + " " + toUpperCase(args.protocol) + " 1.1";
-
-        if(!doesServerSuport(buf, wantedProtocol)){
-            exitError("ERROR: MISSMATCH PROTOCOL\n", sockfd);
-        }
-        std::string aceptMessage =  wantedProtocol + " OK\n";
-        //const char *msg = "TEXT TCP 1.1 OK\n";
-        sendFunc(sockfd, aceptMessage.c_str(), aceptMessage.length());
-        
-        std::string apiUpper = toUpperCase(args.api);
-        if (apiUpper == "TEXT"){
-            handleTcpText(sockfd);
-        }else if(apiUpper == "BINARY"){
-            handleTcpBinary(sockfd);
-        }else{
-            exitError("Unknown api");
-        }
+        sockfd = connectTcp(args.host, args.port, apiUpper);
+        if (apiUpper == "TEXT") handleTcpText(sockfd); else handleTcpBinary(sockfd);
 
     } else if (protoUpper == "UDP") {
         sockfd = setupUdp(args.host, args.port);
-    
-        struct timeval tv = {.tv_sec = 2, .tv_usec = 0};
         setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        if (apiUpper == "TEXT") handleUdpText(sockfd); else handleUdpBinary(sockfd);
 
-        std::string apiUpper = toUpperCase(args.api);
-        if (apiUpper == "TEXT") {
-            handleUdpText(sockfd);
-        } else if (apiUpper == "BINARY") {
-            handleUdpBinary(sockfd);
+    } else if (protoUpper == "ANY") {
+        sockfd = connectTcp(args.host, args.port, apiUpper, false);
+        if (sockfd != -1) {
+            printf("Reached server using TCP.\n");
+            if (apiUpper == "TEXT") handleTcpText(sockfd); else handleTcpBinary(sockfd);
         } else {
-            exitError("Unknown api");
+            sockfd = setupUdp(args.host, args.port, false);
+            if (sockfd == -1) exitError("CANT CONNECT TO " + args.host);
+            setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            printf("Reached server using UDP.\n");
+            if (apiUpper == "TEXT") handleUdpText(sockfd); else handleUdpBinary(sockfd);
         }
-    }
-     else if (protoUpper == "ANY") {
-        //will handel later
+
     } else {
         exitError("Unknown protocol");
     }
