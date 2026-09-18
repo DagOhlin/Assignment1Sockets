@@ -63,7 +63,7 @@ int sendFunc(int sockfd, const void *buf, size_t len) {
 
         if (numbytes < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                exitError("ERROR: MESSAGE LOST (TIMEOUT)", sockfd);
+                exitError("MESSAGE LOST (TIMEOUT)", sockfd);
             }
             exitError("Send failed", sockfd);
         }
@@ -84,7 +84,7 @@ int reciveFunc(int sockfd, char *buf, size_t maxLenght) {
     }
     if (numbytes < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            exitError("ERROR: MESSAGE LOST (TIMEOUT)", sockfd);
+            exitError("MESSAGE LOST (TIMEOUT)", sockfd);
         }
         exitError("Receive failed", sockfd);
     }
@@ -305,7 +305,29 @@ int setupUdp(const std::string &host, int port, bool exitOnFailure = true) {
 
 void handleBinaryAssignment(int sockfd) {
     calcProtocol msg;
-    reciveStruct(sockfd, &msg, sizeof(msg));
+    ssize_t numbytes = recv(sockfd, &msg, sizeof(msg), 0);
+
+    if (numbytes < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            exitError("MESSAGE LOST (TIMEOUT)", sockfd);
+        }
+        exitError("Receive failed", sockfd);
+    }
+    if (numbytes == 0) {
+        exitError("Server disconnected:(", sockfd);
+    }
+
+    if ((size_t)numbytes == sizeof(calcMessage)) {
+        calcMessage rejection;
+        memcpy(&rejection, &msg, sizeof(rejection));
+        if (ntohs(rejection.type) == 2 && ntohl(rejection.message) == 2) {
+            exitError("Server sent NOT OK", sockfd);
+        }
+    }
+
+    if ((size_t)numbytes != sizeof(msg)) {
+        exitError("WRONG SIZE OR INCORRECT PROTOCOL", sockfd);
+    }
 
 
     uint16_t type = ntohs(msg.type);
